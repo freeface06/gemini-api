@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Gemini 영화 챗봇</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .chat-container {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            background-color: #f7f7f7;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        .user {
+            background-color: #d4f1ff;
+            align-self: flex-end;
+            text-align: right;
+        }
+
+        .bot {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            align-self: flex-start;
+        }
+
+        .input-container {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background-color: #fff;
+            border-top: 1px solid #ccc;
+        }
+
+        .input-container input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border: none;
+            background: none;
+        }
+
+        #chatLog {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="chat-container" id="chatLog"></div>
+
+    <div class="input-container">
+        <label for="imageInput" class="upload-btn">➕</label>
+        <input type="file" id="imageInput" name="image" accept="image/*" />
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const chatLog = document.getElementById('chatLog');
+
+        imageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // ✅ 사용자 이미지 메시지 추가
+            const imageURL = URL.createObjectURL(file);
+            appendMessage(`<img src="${imageURL}" style="max-width: 200px; border-radius: 8px;" alt="업로드 이미지" />`, "user");
+
+            // ✅ 로딩 메시지 추가 (후에 교체됨)
+            const loadingMsg = appendMessage(`<em>⏳ 답변 생성 중입니다...</em>`, "bot");
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                const data = await res.json();
+                // ✅ 응답 전처리 (백틱 제거 + 공백 제거)
+                let cleanReply = data.reply
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+                
+                const json = JSON.parse(cleanReply);
+                console.log("응답 데이터:", json);
+
+                // ✅ Gemini 응답 메시지 포맷팅
+                const formatted = `
+<strong>🎬 제목:</strong> ${json.title || '알 수 없음'}<br><br>
+<strong>🎥 감독:</strong> ${json.director || '정보 없음'}<br><br>
+<strong>🖼 장면 설명:</strong><br>${json.sceneDescription || '없음'}<br><br>
+<strong>👥 등장인물:</strong><br>${(json.characters || []).join(', ')}<br><br>
+<strong>🏷 키워드:</strong><br>${(json.keywords || []).join(', ')}<br><br>
+<strong>🔍 Elasticsearch Query:</strong><br>${json.elasticsearchQuery || ''}<br><br>
+<strong>🔥 실시간 정보:</strong><br>
+${json.realtimeInfo?.items?.map(item =>
+                    `✔️ [${item.rank}위] ${item.title} - ${item.releaseDate || ''} (${item.audience || ''})`
+                ).join('<br>') || '없음'}
+`;
+
+                // ✅ 로딩 메시지를 실제 응답으로 교체
+                loadingMsg.innerHTML = formatted;
+                scrollToBottom();
+
+            } catch (e) {
+                console.error("JSON 파싱 실패:", e);
+                loadingMsg.innerHTML = "⚠️ 분석 응답을 처리할 수 없습니다.<br><br><code>" + (data.reply || "오류 발생!") + "</code>";
+                scrollToBottom();
+            }
+
+            // ✅ 파일 초기화
+            e.target.value = "";
+        });
+
+        // ✅ 메시지를 추가하고 요소를 반환
+        function appendMessage(content, sender) {
+            const msg = document.createElement("div");
+            msg.classList.add("message", sender);
+            msg.innerHTML = content;
+            chatLog.appendChild(msg);
+            scrollToBottom();
+            return msg;
+        }
+
+        // ✅ 항상 최신 메시지가 보이도록 스크롤 하단으로 이동
+        function scrollToBottom() {
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+    </script>
+
+</body>
+
+</html>
